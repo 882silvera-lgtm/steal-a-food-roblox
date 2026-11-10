@@ -4,256 +4,354 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
+
 const UNIVERSE_ID = "10429976350";
 const PLACE_ID = "117902952563660";
 
+const persistentScript = `
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local restaurants = Workspace:WaitForChild("RoubeUmaComida")
+
+local bases = {
+    restaurants:FindFirstChild("Restaurante1"),
+    restaurants:FindFirstChild("Restaurante2"),
+    restaurants:FindFirstChild("Restaurante3"),
+    restaurants:FindFirstChild("Restaurante4")
+}
+
+local occupied = {}
+
+local function getSpawn(base)
+    if not base then
+        return nil
+    end
+
+    return base:FindFirstChild("SpawnBase")
+end
+
+local function teleportPlayer(player, base)
+    local spawnPart = getSpawn(base)
+
+    if not spawnPart then
+        return
+    end
+
+    local character = player.Character or player.CharacterAdded:Wait()
+    local root = character:WaitForChild("HumanoidRootPart")
+
+    root.CFrame = spawnPart.CFrame + Vector3.new(0, 4, 0)
+end
+
+local function assignBase(player)
+    for index, base in ipairs(bases) do
+        if base and not occupied[index] then
+            occupied[index] = player.UserId
+
+            player:SetAttribute("BaseNumero", index)
+
+            player.CharacterAdded:Connect(function()
+                task.wait(0.5)
+                teleportPlayer(player, base)
+            end)
+
+            if player.Character then
+                task.wait(0.5)
+                teleportPlayer(player, base)
+            end
+
+            return
+        end
+    end
+
+    player:Kick("Todas as bases estão ocupadas. Tente novamente em alguns segundos.")
+end
+
+local function freeBase(player)
+    local baseNumber = player:GetAttribute("BaseNumero")
+
+    if baseNumber then
+        occupied[baseNumber] = nil
+    end
+end
+
+Players.PlayerAdded:Connect(assignBase)
+Players.PlayerRemoving:Connect(freeBase)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        assignBase(player)
+    end)
+end
+`;
+
 app.get("/", (req, res) => {
-  res.send(`
-    <h1>🍔 Roube uma Comida</h1>
-    <button onclick="executar()">🏠 Criar Jogo</button>
+    res.send(`
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Roube uma Comida</title>
+            <style>
+                body {
+                    font-family: Arial;
+                    background: #111;
+                    color: white;
+                    text-align: center;
+                    padding: 40px 15px;
+                }
 
-    <script>
-      async function executar() {
+                button {
+                    display: block;
+                    width: 90%;
+                    max-width: 400px;
+                    margin: 20px auto;
+                    padding: 18px;
+                    font-size: 20px;
+                    border: 0;
+                    border-radius: 12px;
+                    background: #00c853;
+                    color: white;
+                    font-weight: bold;
+                }
 
-        const script = [
-          "local Players = game:GetService('Players')",
-          "local Workspace = game:GetService('Workspace')",
+                h1 {
+                    margin-bottom: 35px;
+                }
+            </style>
+        </head>
 
-          "-- LIMPAR MAPA PADRAO",
-          "for _, objeto in ipairs(Workspace:GetChildren()) do",
-          "  if objeto:IsA('BasePart') or objeto:IsA('Model') or objeto:IsA('Folder') then",
-          "    objeto:Destroy()",
-          "  end",
-          "end",
+        <body>
+            <h1>🍔 Roube uma Comida</h1>
 
-          "-- PASTA PRINCIPAL",
-          "local mapa = Instance.new('Folder')",
-          "mapa.Name = 'RoubeUmaComida'",
-          "mapa.Parent = Workspace",
+            <button onclick="instalar()">
+                🚀 Instalar / Atualizar Jogo
+            </button>
 
-          "-- CHAO",
-          "local chao = Instance.new('Part')",
-          "chao.Name = 'Chao'",
-          "chao.Size = Vector3.new(300, 2, 300)",
-          "chao.Position = Vector3.new(0, -1, 0)",
-          "chao.Anchored = true",
-          "chao.Parent = mapa",
+            <p id="status"></p>
 
-          "-- POSICOES DOS 4 RESTAURANTES",
-          "local restaurantes = {",
-          "  Vector3.new(-85, 1, -85),",
-          "  Vector3.new(85, 1, -85),",
-          "  Vector3.new(-85, 1, 85),",
-          "  Vector3.new(85, 1, 85)",
-          "}",
+            <script>
+                async function instalar() {
+                    const status = document.getElementById("status");
 
-          "-- POSICOES DE SPAWN NA FRENTE DE CADA RESTAURANTE",
-          "local spawns = {",
-          "  Vector3.new(-85, 4, -47),",
-          "  Vector3.new(85, 4, -47),",
-          "  Vector3.new(-85, 4, 47),",
-          "  Vector3.new(85, 4, 47)",
-          "}",
+                    status.innerText = "Criando jogo...";
 
-          "-- BASES DOS JOGADORES",
-          "local bases = {}",
+                    const resposta = await fetch("/install", {
+                        method: "POST"
+                    });
 
-          "for numero, centro in ipairs(restaurantes) do",
+                    const texto = await resposta.text();
 
-          "  local restaurante = Instance.new('Model')",
-          "  restaurante.Name = 'Restaurante' .. numero",
-          "  restaurante.Parent = mapa",
-
-          "  local area = Instance.new('Part')",
-          "  area.Name = 'AreaRestaurante'",
-          "  area.Size = Vector3.new(65, 1, 65)",
-          "  area.Position = centro",
-          "  area.Anchored = true",
-          "  area.Parent = restaurante",
-
-          "  -- CERCA DA BASE",
-          "  local cercas = {",
-          "    {Vector3.new(65, 8, 2), Vector3.new(0, 4, -31)},",
-          "    {Vector3.new(65, 8, 2), Vector3.new(0, 4, 31)},",
-          "    {Vector3.new(2, 8, 62), Vector3.new(-32, 4, 0)},",
-          "    {Vector3.new(2, 8, 62), Vector3.new(32, 4, 0)}",
-          "  }",
-
-          "  for i, dados in ipairs(cercas) do",
-          "    local cerca = Instance.new('Part')",
-          "    cerca.Name = 'Cerca' .. i",
-          "    cerca.Size = dados[1]",
-          "    cerca.Position = centro + dados[2]",
-          "    cerca.Anchored = true",
-          "    cerca.Parent = restaurante",
-          "  end",
-
-          "  -- ENTRADA DA BASE",
-          "  local entrada = Instance.new('Part')",
-          "  entrada.Name = 'Entrada'",
-          "  entrada.Size = Vector3.new(14, 8, 2)",
-          "  entrada.Position = centro + Vector3.new(0, 4, -31)",
-          "  entrada.Transparency = 1",
-          "  entrada.CanCollide = false",
-          "  entrada.Anchored = true",
-          "  entrada.Parent = restaurante",
-
-          "  -- PLACA",
-          "  local placa = Instance.new('BillboardGui')",
-          "  placa.Size = UDim2.new(0, 300, 0, 60)",
-          "  placa.StudsOffset = Vector3.new(0, 10, 0)",
-          "  placa.AlwaysOnTop = true",
-          "  placa.Parent = area",
-
-          "  local texto = Instance.new('TextLabel')",
-          "  texto.Size = UDim2.fromScale(1, 1)",
-          "  texto.BackgroundTransparency = 1",
-          "  texto.Text = '🍽️ RESTAURANTE ' .. numero",
-          "  texto.TextScaled = true",
-          "  texto.TextColor3 = Color3.new(1, 1, 1)",
-          "  texto.Parent = placa",
-
-          "  -- 20 ESPACOS DE COMIDA + 20 BANCOS",
-          "  for i = 1, 20 do",
-
-          "    local linha = math.floor((i - 1) / 5)",
-          "    local coluna = (i - 1) % 5",
-
-          "    local x = (coluna - 2) * 11",
-          "    local z = linha * 9 - 13",
-
-          "    local espaco = Instance.new('Part')",
-          "    espaco.Name = 'EspacoComida' .. i",
-          "    espaco.Size = Vector3.new(7, 1, 7)",
-          "    espaco.Position = centro + Vector3.new(x, 2, z)",
-          "    espaco.Anchored = true",
-          "    espaco.Parent = restaurante",
-
-          "    local banco = Instance.new('Part')",
-          "    banco.Name = 'Banco' .. i",
-          "    banco.Size = Vector3.new(5, 2, 5)",
-          "    banco.Position = centro + Vector3.new(x, 2, z + 4)",
-          "    banco.Anchored = true",
-          "    banco.Parent = restaurante",
-
-          "  end",
-
-          "  -- PONTO DE SPAWN",
-          "  local spawn = Instance.new('Part')",
-          "  spawn.Name = 'SpawnBase' .. numero",
-          "  spawn.Size = Vector3.new(8, 1, 8)",
-          "  spawn.Position = spawns[numero]",
-          "  spawn.Transparency = 1",
-          "  spawn.CanCollide = false",
-          "  spawn.Anchored = true",
-          "  spawn.Parent = restaurante",
-
-          "  bases[numero] = {",
-          "    restaurante = restaurante,",
-          "    spawn = spawn,",
-          "    dono = nil",
-          "  }",
-
-          "end",
-
-          "-- FUNCAO PARA ESCOLHER UMA BASE LIVRE",
-          "local function pegarBase(player)",
-          "  for numero, dados in ipairs(bases) do",
-          "    if dados.dono == nil then",
-          "      dados.dono = player",
-          "      player:SetAttribute('NumeroDaBase', numero)",
-          "      return dados",
-          "    end",
-          "  end",
-          "  return nil",
-          "end",
-
-          "-- TELEPORTAR PARA A PROPRIA BASE",
-          "local function teleportarParaBase(player, personagem)",
-          "  local numero = player:GetAttribute('NumeroDaBase')",
-          "  if not numero then return end",
-
-          "  local dados = bases[numero]",
-          "  if not dados then return end",
-
-          "  local raiz = personagem:WaitForChild('HumanoidRootPart', 10)",
-          "  if raiz then",
-          "    raiz.CFrame = dados.spawn.CFrame + Vector3.new(0, 4, 0)",
-          "  end",
-          "end",
-
-          "-- QUANDO UM PLAYER ENTRA",
-          "Players.PlayerAdded:Connect(function(player)",
-
-          "  local dados = pegarBase(player)",
-
-          "  if not dados then",
-          "    player:Kick('Servidor cheio! Todas as 4 bases estão ocupadas.')",
-          "    return",
-          "  end",
-
-          "  player.CharacterAdded:Connect(function(personagem)",
-          "    task.wait(0.5)",
-          "    teleportarParaBase(player, personagem)",
-          "  end)",
-
-          "end)",
-
-          "-- LIBERAR A BASE QUANDO O PLAYER SAIR",
-          "Players.PlayerRemoving:Connect(function(player)",
-          "  local numero = player:GetAttribute('NumeroDaBase')",
-
-          "  if numero and bases[numero] then",
-          "    bases[numero].dono = nil",
-          "  end",
-          "end)",
-
-          "print('ROUBE UMA COMIDA: MAPA E SISTEMA DE BASES CRIADOS!')"
-        ].join("\\n");
-
-        const resposta = await fetch("/execute", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({ script })
-        });
-
-        alert(await resposta.text());
-      }
-    </script>
-  `);
+                    status.innerText = texto;
+                }
+            </script>
+        </body>
+        </html>
+    `);
 });
 
-app.post("/execute", async (req, res) => {
-  try {
-    const resposta = await fetch(
-      "https://apis.roblox.com/cloud/v2/universes/" +
-      UNIVERSE_ID +
-      "/places/" +
-      PLACE_ID +
-      "/luau-execution-session-tasks",
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": process.env.ROBLOX_API_KEY,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          script: req.body.script
-        })
-      }
-    );
+app.post("/install", async (req, res) => {
+    const script = `
+local Workspace = game:GetService("Workspace")
+local ServerScriptService = game:GetService("ServerScriptService")
 
-    res.status(resposta.status).send(await resposta.text());
+-- LIMPAR SPAWNS ANTIGOS
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if obj:IsA("SpawnLocation") then
+        obj:Destroy()
+    end
+end
 
-  } catch (erro) {
-    res.status(500).json({
-      error: erro.message
-    });
-  }
+-- APAGAR MAPA ANTIGO
+local oldMap = Workspace:FindFirstChild("RoubeUmaComida")
+if oldMap then
+    oldMap:Destroy()
+end
+
+-- APAGAR SCRIPT ANTIGO
+local oldScript = ServerScriptService:FindFirstChild("RoubeUmaComidaServer")
+if oldScript then
+    oldScript:Destroy()
+end
+
+-- PASTA PRINCIPAL
+local gameFolder = Instance.new("Folder")
+gameFolder.Name = "RoubeUmaComida"
+gameFolder.Parent = Workspace
+
+-- CHÃO
+local ground = Instance.new("Part")
+ground.Name = "Chao"
+ground.Size = Vector3.new(260, 2, 260)
+ground.Position = Vector3.new(0, -1, 0)
+ground.Anchored = true
+ground.Material = Enum.Material.Grass
+ground.Parent = gameFolder
+
+local basePositions = {
+    Vector3.new(-75, 1, -75),
+    Vector3.new(75, 1, -75),
+    Vector3.new(-75, 1, 75),
+    Vector3.new(75, 1, 75)
+}
+
+for i, position in ipairs(basePositions) do
+
+    local restaurant = Instance.new("Model")
+    restaurant.Name = "Restaurante" .. i
+    restaurant.Parent = gameFolder
+
+    -- PLATAFORMA DA BASE
+    local platform = Instance.new("Part")
+    platform.Name = "MesaRestaurante"
+    platform.Size = Vector3.new(55, 2, 42)
+    platform.Position = position
+    platform.Anchored = true
+    platform.Material = Enum.Material.WoodPlanks
+    platform.Parent = restaurant
+
+    -- PAREDES
+    local wallBack = Instance.new("Part")
+    wallBack.Size = Vector3.new(55, 8, 1)
+    wallBack.Position = position + Vector3.new(0, 5, 20)
+    wallBack.Anchored = true
+    wallBack.Parent = restaurant
+
+    local wallLeft = Instance.new("Part")
+    wallLeft.Size = Vector3.new(1, 8, 42)
+    wallLeft.Position = position + Vector3.new(-27, 5, 0)
+    wallLeft.Anchored = true
+    wallLeft.Parent = restaurant
+
+    local wallRight = Instance.new("Part")
+    wallRight.Size = Vector3.new(1, 8, 42)
+    wallRight.Position = position + Vector3.new(27, 5, 0)
+    wallRight.Anchored = true
+    wallRight.Parent = restaurant
+
+    -- SPAWN DA BASE
+    local spawnPart = Instance.new("Part")
+    spawnPart.Name = "SpawnBase"
+    spawnPart.Size = Vector3.new(8, 1, 8)
+    spawnPart.Position = position + Vector3.new(0, 2, -28)
+    spawnPart.Anchored = true
+    spawnPart.Transparency = 0.5
+    spawnPart.CanCollide = false
+    spawnPart.Parent = restaurant
+
+    -- SLOTS DE COMIDA
+    local slotsFolder = Instance.new("Folder")
+    slotsFolder.Name = "FoodSlots"
+    slotsFolder.Parent = restaurant
+
+    for slot = 1, 20 do
+        local foodSlot = Instance.new("Part")
+        foodSlot.Name = "FoodSlot" .. slot
+        foodSlot.Size = Vector3.new(4, 1, 4)
+        foodSlot.Anchored = true
+
+        local row = math.floor((slot - 1) / 10)
+        local column = (slot - 1) % 10
+
+        foodSlot.Position =
+            position +
+            Vector3.new(-22 + column * 4.8, 2, -12 + row * 6)
+
+        foodSlot.Material = Enum.Material.Neon
+        foodSlot.Transparency = 0.7
+        foodSlot.Parent = slotsFolder
+    end
+
+    -- BANCOS
+    local benchesFolder = Instance.new("Folder")
+    benchesFolder.Name = "Benches"
+    benchesFolder.Parent = restaurant
+
+    for bench = 1, 20 do
+        local seat = Instance.new("Seat")
+        seat.Name = "Banco" .. bench
+        seat.Size = Vector3.new(3, 1, 3)
+        seat.Anchored = true
+
+        local row = math.floor((bench - 1) / 10)
+        local column = (bench - 1) % 10
+
+        seat.Position =
+            position +
+            Vector3.new(-22 + column * 4.8, 2, 5 + row * 5)
+
+        seat.Parent = benchesFolder
+    end
+
+    -- LETREIRO
+    local sign = Instance.new("Part")
+    sign.Name = "Letreiro"
+    sign.Size = Vector3.new(20, 5, 1)
+    sign.Position = position + Vector3.new(0, 7, 20)
+    sign.Anchored = true
+    sign.Parent = restaurant
+
+    local gui = Instance.new("SurfaceGui")
+    gui.Face = Enum.NormalId.Front
+    gui.Parent = sign
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.fromScale(1, 1)
+    text.BackgroundTransparency = 1
+    text.Text = "🍔 RESTAURANTE " .. i
+    text.TextScaled = true
+    text.TextColor3 = Color3.fromRGB(255, 255, 255)
+    text.Parent = gui
+end
+
+-- CRIAR SCRIPT PERMANENTE
+local serverScript = Instance.new("Script")
+serverScript.Name = "RoubeUmaComidaServer"
+serverScript.Disabled = false
+serverScript.Source = ${JSON.stringify(persistentScript)}
+serverScript.Parent = ServerScriptService
+
+task.wait(2)
+
+-- SALVAR O PLACE
+local sucesso, erro = pcall(function()
+    game:SavePlaceAsync()
+end)
+
+if sucesso then
+    return "SUCESSO: jogo instalado e salvo! Entre novamente no jogo para testar o spawn."
+else
+    return "MAPA CRIADO, mas erro ao salvar: " .. tostring(erro)
+end
+`;
+
+    try {
+        const resposta = await fetch(
+            "https://apis.roblox.com/cloud/v2/universes/" +
+            UNIVERSE_ID +
+            "/places/" +
+            PLACE_ID +
+            "/luau-execution-session-tasks",
+            {
+                method: "POST",
+                headers: {
+                    "x-api-key": process.env.ROBLOX_API_KEY,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ script })
+            }
+        );
+
+        const resultado = await resposta.text();
+
+        res.status(resposta.status).send(resultado);
+    } catch (erro) {
+        res.status(500).json({
+            error: erro.message
+        });
+    }
 });
 
 app.listen(PORT, () => {
-  console.log("Servidor rodando na porta " + PORT);
+    console.log("Servidor rodando na porta " + PORT);
 });
