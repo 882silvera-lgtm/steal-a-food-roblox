@@ -11,7 +11,7 @@ const PLACE_ID = "117902952563660";
 app.get("/", (req, res) => {
   res.send(`
     <h1>🍔 Roube uma Comida</h1>
-    <button onclick="testar()">Testar Roblox</button>
+    <button onclick="testar()">Criar chão do mapa</button>
 
     <script>
       async function testar() {
@@ -21,7 +21,16 @@ app.get("/", (req, res) => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            script: "print('ROUBE UMA COMIDA: conexão funcionando!')"
+            script: \`
+              local Workspace = game:GetService("Workspace")
+
+              local chão = Instance.new("Part")
+              chão.Name = "ChaoDoMapa"
+              chão.Size = Vector3.new(200, 1, 200)
+              chão.Position = Vector3.new(0, 0, 0)
+              chão.Anchored = true
+              chão.Parent = Workspace
+            \`
           })
         });
 
