@@ -9,7 +9,27 @@ const UNIVERSE_ID = "10429976350";
 const PLACE_ID = "117902952563660";
 
 app.get("/", (req, res) => {
-  res.send("Servidor do Roube uma Comida está online 🍔");
+  res.send(`
+    <h1>🍔 Roube uma Comida</h1>
+    <button onclick="testar()">Testar Roblox</button>
+
+    <script>
+      async function testar() {
+        const resposta = await fetch("/execute", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            script: "print('ROUBE UMA COMIDA: conexão funcionando!')"
+          })
+        });
+
+        const resultado = await resposta.text();
+        alert(resultado);
+      }
+    </script>
+  `);
 });
 
 app.post("/execute", async (req, res) => {
@@ -18,11 +38,11 @@ app.post("/execute", async (req, res) => {
 
     if (!script) {
       return res.status(400).json({
-        error: "Envie um script Luau"
+        error: "Nenhum script Luau enviado"
       });
     }
 
-    const response = await fetch(
+    const resposta = await fetch(
       `https://apis.roblox.com/cloud/v2/universes/${UNIVERSE_ID}/places/${PLACE_ID}/luau-execution-session-tasks`,
       {
         method: "POST",
@@ -31,17 +51,17 @@ app.post("/execute", async (req, res) => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          script
+          script: script
         })
       }
     );
 
-    const data = await response.json();
+    const resultado = await resposta.text();
 
-    res.status(response.status).json(data);
-  } catch (error) {
+    res.status(resposta.status).send(resultado);
+  } catch (erro) {
     res.status(500).json({
-      error: error.message
+      error: erro.message
     });
   }
 });
